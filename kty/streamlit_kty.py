@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import tiktoken
 from loguru import logger
@@ -81,6 +82,81 @@ def get_conversation_chain(vetorestore,openai_api_key, model_name):
 
     return conversation_chain
 
+# 채팅 기록 저장 함수
+def save_chat_history(title=""):
+    if 'messages' in st.session_state and len(st.session_state.messages) > 0:
+        if not os.path.exists('chat_history'):
+            os.makedirs('chat_history')
+        
+        if not title:
+            title = "chat_history"
+        
+        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).rstrip()
+        filename = f"{safe_title}.txt"
+        filepath = os.path.join('chat_history', filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            for msg in st.session_state.messages:
+                f.write(f"[{msg['role'].upper()}] {msg['content']}\n")
+        
+        st.success(f"✅ 채팅 기록이 저장되었습니다: {filename}")
+        return True
+    else:
+        st.warning("저장할 채팅 기록이 없습니다.")
+        return False
+
+# 저장된 채팅 기록 표시 함수
+def display_saved_chats():
+    st.subheader("📁 저장된 채팅 기록")
+    
+    if not os.path.exists('chat_history'):
+        st.info("채팅 기록 폴더가 존재하지 않습니다.")
+        return []
+        
+    files = [f for f in os.listdir('chat_history') if f.endswith('.txt')]
+    
+    if not files:
+        st.info("아직 저장된 채팅 기록이 없습니다.")
+        return []
+        
+    cols = st.columns(3)
+    for idx, file in enumerate(files):
+        with cols[idx%3]:
+            with open(os.path.join('chat_history', file), 'r', encoding='utf-8') as f:
+                content = f.read()
+            st.download_button(
+                label=f"📄 {file}",
+                data=content,
+                file_name=file,
+                mime="text/plain"
+            )
+    
+    return files
+
+# 채팅 기록 불러오기 함수
+def load_chat_history(filename):
+    messages = []
+    file_path = os.path.join('chat_history', filename)
+    
+    if not os.path.exists(file_path):
+        st.error(f"{filename} 파일을 찾을 수 없습니다.")
+        return False
+        
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith("[USER]"):
+                messages.append({"role": "user", "content": line[len("[USER] "):].strip()})
+            elif line.startswith("[ASSISTANT]"):
+                messages.append({"role": "assistant", "content": line[len("[ASSISTANT] "):].strip()})
+                
+    if messages:
+        st.session_state['messages'] = messages
+        st.success(f"✅ {filename} 채팅 기록을 불러왔습니다.")
+        return True
+    
+    st.warning(f"{filename} 파일에서 메시지를 찾을 수 없습니다.")
+    return False
+
 def main():
     st.set_page_config(
     page_title="DirChat",
@@ -90,18 +166,38 @@ def main():
 
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
-
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = None
-
     if "processComplete" not in st.session_state:
         st.session_state.processComplete = None
 
     with st.sidebar:
         uploaded_files =  st.file_uploader("Upload your file", type=['pdf','docx'], accept_multiple_files=True)
+
         openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
         process = st.button("Process")
+
+        st.divider()
+        
         model_name = st.selectbox("모델 선택", ("gpt-3.5-turbo", "gpt-4"), index=0)
+
+        st.divider()
+        
+        st.subheader("채팅 기록 관리")
+        chat_title = st.text_input("채팅 기록 제목 입력", "")
+        
+        if st.button("채팅 기록 저장"):
+            save_chat_history(chat_title)
+
+        st.subheader("채팅 기록 불러오기")
+        # 저장된 채팅 기록 목록 가져오기
+        if os.path.exists('chat_history'):
+            files = [f for f in os.listdir('chat_history') if f.endswith('.txt')]
+            if files:
+                selected_file = st.selectbox("불러올 채팅 기록 선택", [""] + files)
+                if st.button("선택한 기록 불러오기") and selected_file:
+                    load_chat_history(selected_file)
+
     if process:
         if not openai_api_key:
             st.info("Please add your OpenAI API key to continue.")
@@ -113,6 +209,15 @@ def main():
         st.session_state.conversation = get_conversation_chain(vetorestore, openai_api_key, model_name) 
 
         st.session_state.processComplete = True
+
+        # 메인 채팅 UI 표시
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # 저장된 채팅 기록 표시
+        with st.expander("저장된 채팅 기록", expanded=False):
+            display_saved_chats()
 
     if 'messages' not in st.session_state:
         st.session_state['messages'] = [{"role": "assistant", 
@@ -146,7 +251,7 @@ def main():
                     st.markdown(source_documents[0].metadata['source'], help = source_documents[0].page_content)
                     st.markdown(source_documents[1].metadata['source'], help = source_documents[1].page_content)
                     st.markdown(source_documents[2].metadata['source'], help = source_documents[2].page_content)
-                    
+
 # Add assistant message to chat history
         st.session_state.messages.append({"role": "assistant", "content": response})
 
