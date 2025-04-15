@@ -44,6 +44,13 @@ def main():
         process = st.button("Process")
         select_box = st.selectbox("Select your model", ("gpt-3.5-turbo","gpt-4"))
         st.session_state.model = select_box
+        chat_history = st.button("채팅 기록")
+        source = st.button("출처")
+        
+        
+        
+        
+        
         
         
     if process:
@@ -54,9 +61,11 @@ def main():
         text_chunks = get_text_chunks(files_text)
         vetorestore = get_vectorstore(text_chunks)
      
-        st.session_state.conversation = get_conversation_chain(vetorestore,openai_api_key) 
+        st.session_state.conversation = get_conversation_chain(vetorestore,openai_api_key, select_box) 
 
         st.session_state.processComplete = True
+        
+    
 
     if 'messages' not in st.session_state:
         st.session_state['messages'] = [{"role": "assistant", 
@@ -143,8 +152,8 @@ def get_vectorstore(text_chunks):
     vectordb = FAISS.from_documents(text_chunks, embeddings)
     return vectordb
 
-def get_conversation_chain(vetorestore,openai_api_key):
-    llm = ChatOpenAI(openai_api_key=openai_api_key, model_name = 'gpt-3.5-turbo',temperature=0)
+def get_conversation_chain(vetorestore,openai_api_key, model_name):
+    llm = ChatOpenAI(openai_api_key=openai_api_key, model_name = model_name, temperature=0)
     conversation_chain = ConversationalRetrievalChain.from_llm(
             llm=llm, 
             chain_type="stuff", 
